@@ -2,7 +2,9 @@ package neo4j
 
 import (
 	"context"
+	"eth-graph-explorer/blockchain"
 	"fmt"
+	"log"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
@@ -21,7 +23,6 @@ func CreateConnection() (neo4j.DriverWithContext, context.Context) {
 	if err != nil {
 		panic(err)
 	}
-	defer driver.Close(ctx)
 
 	fmt.Println("instance connect")
 
@@ -29,14 +30,131 @@ func CreateConnection() (neo4j.DriverWithContext, context.Context) {
 
 }
 
-// func Vizualization(data []blockchain.TransactionData, driver neo4j.DriverWithContext, ctx context.Context) {
+func MergeAddress(addr1, addr2 string, session neo4j.SessionWithContext, driver neo4j.DriverWithContext) {
 
-// 	addressQuery := `RETURN EXIST { MATCH (:Block {address: $addr})}`
+	/// переписать запрос
 
-// 	session := driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "eth"})
+	ctx := context.Background()
 
-// 	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+	query := `
+		MERGE (:Block{address: $address1})
+		MERGE (:Block{address: $address2})
+	`
 
-// 	}
+	data := map[string]any{
+		"address1": addr1,
+		"address2": addr2,
+	}
 
+	result, err := neo4j.ExecuteQuery(ctx, driver, query, data, neo4j.EagerResultTransformer, neo4j.ExecuteQueryWithDatabase("eth"))
+	if err != nil {
+		log.Fatal("не удалось создать адреса")
+	}
+
+	summary := result.Summary
+	fmt.Printf("Created %v nodes in %+v.\n",
+		summary.Counters().NodesCreated(),
+		summary.ResultAvailableAfter())
+
+}
+
+// func checkRelation() {
+// 	// MATCH (a1:Block {address: "addr1"})
+// 	// MATCH (a2:Block {address: "addr2"})
+// 	// MATCH p=(a1)-[r:TRANSFER]->(a2) RETURN p
 // }
+
+func checkAddressExist(session neo4j.SessionWithContext, data blockchain.TransactionData, driver neo4j.DriverWithContext) bool {
+
+	ctx := context.Background()
+
+	readQuety :=
+		`RETURN EXISTS {
+    		MATCH (:Block {address: $fromAddress})
+    		MATCH (:Block {address: $toAddress})
+		} AS found`
+
+	queryData := map[string]any{
+		"fromAddress": data.FromAddress,
+		"toAddress":   data.ToAddress,
+	}
+
+	read, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		resords, err := tx.Run(ctx, readQuety, queryData)
+		if err != nil {
+			fmt.Println("ошибка тут")
+			return false, err
+		}
+		if resords.Next(ctx) {
+			value, found := resords.Record().Get("found")
+			if !found {
+				return false, fmt.Errorf("поле 'found' не найдено")
+			}
+			if result, ok := value.(bool); ok {
+				return result, nil
+			}
+			return false, fmt.Errorf("ожидался bool, получен %T", value)
+		}
+
+		return false, fmt.Errorf("пустой результат")
+	})
+	if err != nil {
+		log.Fatal("Ошибка выполнения запроса", err)
+	}
+
+	result := read.(bool)
+	if result {
+		return true
+	} else {
+		MergeAddress(data.FromAddress, data.ToAddress, session, driver)
+		return true
+	}
+
+}
+
+func makeRelation(addr1, addr2, value, tx string, driver neo4j.DriverWithContext) error {
+
+	ctx := context.Background()
+
+	relationQuety := `
+		MATCH (a1:Block{address: $fromAddress})
+		MATCH (a2:Block{address: $toAddress})
+		CREATE (a1)-[:TRANSFER {val: $value, transaction: $tx}]->(a2)
+	`
+
+	queryData := map[string]any{
+		"fromAddress": addr1,
+		"toAddress":   addr2,
+		"value":       value,
+		"tx":          tx,
+	}
+
+	_, err := neo4j.ExecuteQuery(ctx, driver, relationQuety, queryData, neo4j.EagerResultTransformer, neo4j.ExecuteQueryWithDatabase("eth"))
+	if err != nil {
+		return fmt.Errorf("Ошибка создания связи")
+	}
+
+	return nil
+
+}
+
+func Vizualization(data *[]blockchain.TransactionData, driver neo4j.DriverWithContext) {
+
+	ctx := context.Background()
+	session := driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "eth"})
+
+	for _, elem := range *data {
+		check := checkAddressExist(session, elem, driver)
+		if check {
+			fmt.Println("exist")
+		}
+		// переписать возврат checkAddressExist
+
+		// проверика если связь существует
+		makeRelation(elem.FromAddress, elem.ToAddress, elem.TransactionValue, elem.Tx, driver)
+
+	}
+
+	fmt.Println("Визуализация завершена")
+
+}

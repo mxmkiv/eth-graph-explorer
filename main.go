@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"eth-graph-explorer/blockchain"
+	"eth-graph-explorer/neo4j"
 	"eth-graph-explorer/transaction"
 	"eth-graph-explorer/ui"
 	"fmt"
@@ -32,12 +33,12 @@ Menu:
 			targetAddress := ui.GetTargetAddress(scanner)
 			trackResult := blockchain.TtackAddress(ctx, client, targetAddress)
 			structResult := blockchain.ParseTransaction(trackResult)
-			ui.ShowTransaction(structResult)
-			//answer := ui.VisualisationAccept(scanner)
-			// if answer {
-			// 	driver, ctx := neo4j.CreateConnection()
-			// 	//neo4j.Vizualization(structResult, driver, ctx)
-			// }
+			ui.ShowTransaction(&structResult)
+			answer := ui.VisualisationAccept(scanner)
+			if answer {
+				driver, _ := neo4j.CreateConnection()
+				neo4j.Vizualization(&structResult, driver)
+			}
 		case 4:
 			break Menu
 		default:

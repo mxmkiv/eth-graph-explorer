@@ -8,9 +8,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-func ShowTransaction(data []blockchain.TransactionData) {
+func ShowTransaction(data *[]blockchain.TransactionData) {
 
-	for _, elem := range data {
+	for _, elem := range *data {
 		fmt.Println("Transaction: ", elem.Tx)
 		fmt.Println("From: ", elem.FromAddress)
 		fmt.Println("To: ", elem.ToAddress)
@@ -20,13 +20,13 @@ func ShowTransaction(data []blockchain.TransactionData) {
 
 func VisualisationAccept(scanner *bufio.Scanner) bool {
 
-	fmt.Println("Визуализировать данные?: (y)/n")
+	fmt.Print("Визуализировать данные? (y)/n : ")
 Acception:
 	for {
 		scanner.Scan()
 		line := scanner.Text()
 		switch line {
-		case "y":
+		case "y", "":
 			return true
 		case "n":
 			return false
