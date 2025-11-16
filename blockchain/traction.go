@@ -11,6 +11,13 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+type TransactionData struct {
+	Tx               string
+	FromAddress      string
+	ToAddress        string
+	TransactionValue string
+}
+
 func TtackAddress(ctx context.Context, client *ethclient.Client, targetAddress common.Address) []*types.Transaction {
 
 	header, err := client.BlockByNumber(ctx, nil)
@@ -46,13 +53,6 @@ func TtackAddress(ctx context.Context, client *ethclient.Client, targetAddress c
 
 	return match
 
-}
-
-type TransactionData struct {
-	Tx               string
-	FromAddress      string
-	ToAddress        string
-	TransactionValue string
 }
 
 func ParseTransaction(addrs []*types.Transaction) []TransactionData {

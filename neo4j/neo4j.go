@@ -58,11 +58,49 @@ func MergeAddress(addr1, addr2 string, session neo4j.SessionWithContext, driver 
 
 }
 
-// func checkRelation() {
-// 	// MATCH (a1:Block {address: "addr1"})
-// 	// MATCH (a2:Block {address: "addr2"})
-// 	// MATCH p=(a1)-[r:TRANSFER]->(a2) RETURN p
-// }
+func checkRelationExist(ctx context.Context, addr1, addr2 string, driver neo4j.DriverWithContext) bool {
+
+	query := `
+		RETURN EXISTS {
+  			MATCH (a1:Block {address: $addr1})
+  			MATCH (a2:Block {address: $addr2})
+  			MATCH p=(a1)-[r:TRANSFER]->(a2) RETURN p
+		} AS found
+	`
+
+	queryData := map[string]any{
+		"addr1": addr1,
+		"addr2": addr2,
+	}
+
+	result, err := neo4j.ExecuteQuery(ctx, driver, query, queryData,
+		neo4j.EagerResultTransformer,
+		neo4j.ExecuteQueryWithDatabase("eth"))
+
+	if err != nil {
+		log.Fatal("не удалось выполнить запрос checkRelationExist", err)
+	}
+
+	if len(result.Records) == 0 {
+		// пустой ответ
+		return false
+	}
+
+	foundValue, ok := result.Records[0].Get("found")
+	if !ok {
+		// поле found не найдено
+		return false
+	}
+
+	foundBool, ok := foundValue.(bool)
+	if !ok {
+		// неверный тип поля
+		return false
+	}
+
+	return foundBool
+
+}
 
 func checkAddressExist(session neo4j.SessionWithContext, data blockchain.TransactionData, driver neo4j.DriverWithContext) bool {
 
@@ -78,6 +116,8 @@ func checkAddressExist(session neo4j.SessionWithContext, data blockchain.Transac
 		"fromAddress": data.FromAddress,
 		"toAddress":   data.ToAddress,
 	}
+
+	//переписать через ExecuteQuery
 
 	read, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
 		resords, err := tx.Run(ctx, readQuety, queryData)
@@ -131,7 +171,7 @@ func makeRelation(addr1, addr2, value, tx string, driver neo4j.DriverWithContext
 
 	_, err := neo4j.ExecuteQuery(ctx, driver, relationQuety, queryData, neo4j.EagerResultTransformer, neo4j.ExecuteQueryWithDatabase("eth"))
 	if err != nil {
-		return fmt.Errorf("Ошибка создания связи")
+		return fmt.Errorf("ошибка создания связи")
 	}
 
 	return nil
@@ -150,9 +190,12 @@ func Vizualization(data *[]blockchain.TransactionData, driver neo4j.DriverWithCo
 		}
 		// переписать возврат checkAddressExist
 
-		// проверика если связь существует
-		makeRelation(elem.FromAddress, elem.ToAddress, elem.TransactionValue, elem.Tx, driver)
-
+		exist := checkRelationExist(ctx, elem.FromAddress, elem.ToAddress, driver)
+		if exist {
+			continue
+		} else {
+			makeRelation(elem.FromAddress, elem.ToAddress, elem.TransactionValue, elem.Tx, driver)
+		}
 	}
 
 	fmt.Println("Визуализация завершена")
